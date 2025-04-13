@@ -8,7 +8,7 @@ This tool is designed to aid the work with phages, that were sequenced using Nan
 
 ## Usage
 
-- Clone this repository.
+- Clone this repository by running `git clone https://github.com/DEpt-metagenom/QPPL.git`.
 
 - Install all conda environments from `envs/` using `conda env create -f [env.yml]`.
 
@@ -67,4 +67,5 @@ This tool is designed to aid the work with phages, that were sequenced using Nan
 
 ## Citation
 
-If used, please refer to this Github repository.
+If you use this piece of software, please refer to the following presentation:
+Z. Halász et al. (2025). An automated pipeline to genotype bacteriophages using third generation sequencing. ESCMID Global, ePoster E0539, Vienna
