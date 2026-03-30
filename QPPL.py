@@ -1,6 +1,6 @@
 import os
-import subprocess
-import re
+import sys
+import logging
 import modules.parser
 import modules.version
 import modules.config
@@ -9,89 +9,76 @@ import modules.assembly
 import modules.characterization
 import modules.readquality
 
+# Logger setup with color support
+class ColorFormatter(logging.Formatter):
+    COLORS = {
+        logging.DEBUG: "\033[36m",    # Cyan
+        logging.INFO: "\033[32m",     # Green
+        logging.WARNING: "\033[33m",  # Yellow
+        logging.ERROR: "\033[31m",    # Red
+        logging.CRITICAL: "\033[41m", # Red background
+    }
+    RESET = "\033[0m"
+
+    def format(self, record):
+        color = self.COLORS.get(record.levelno, self.RESET)
+        message = super().format(record)
+        return f"{color}{message}{self.RESET}" if sys.stdout.isatty() else message
+
+# Logger configuration
+logger = logging.getLogger("QPPL")
+logger.setLevel(logging.DEBUG)
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(ColorFormatter("[%(levelname)s] %(asctime)s - %(message)s", "%Y-%m-%d %H:%M:%S"))
+logger.addHandler(console_handler)
+
+# Function to get FASTQ files from input directory
+def get_fastq_files(input_dir):
+    return [f for f in os.listdir(input_dir) if f.endswith((".fastq", ".fastq.gz", ".fq", ".fq.gz"))]
+
+# Main function
 def main():
     parser = modules.parser.create_parser()
     args = parser.parse_args()
 
     if args.version:
         print(modules.version.LOGO.strip())
-    elif args.generate_config:
+        return
+    
+    if args.generate_config:
         modules.config.generate_default_config()
-    elif args.config:
-        try:
-            input_dir, output_dir, prefix, task, task_params = modules.config.read_config(args.config)
+        return
 
-            # Print the configuration
-            print(f"Input Directory: {input_dir}")
-            print(f"Output Directory: {output_dir}")
-            print(f"Prefix: {prefix}")
-            print(f"Task: {task}")
-            print(f"Task Parameters: {task_params}")
+    try:
+        input_dir, output_dir, task, task_params = modules.config.read_config(args.config)
 
-            if task == 'readquality':
-                input_files = [
-                    f for f in os.listdir(input_dir) 
-                    if f.endswith((".fastq", ".fastq.gz", ".fq", ".fq.gz"))
-                ]
+        # Print the configuration
+        print(f"Input Directory: {input_dir}\nOutput Directory: {output_dir}\nTask: {task}\nTask Parameters: {task_params}")
 
-                if not input_files:
-                    print("\033[1;31m[ERROR]\033[0m No FASTQ files found in input directory.")
-                    return
+        input_files = get_fastq_files(input_dir)
+        if not input_files:
+            logger.error("No FASTQ files found in input directory.")
+            return
 
-                modules.readquality.run_read_quality(input_dir, output_dir, prefix, input_files, task_params)
+        # Execute the task or all tasks
+        if task == 'readquality':
+            modules.readquality.run_read_quality(input_dir, output_dir, input_files, task_params)
+        elif task == 'filter':
+            modules.filter.run_filter(input_dir, output_dir, input_files, task_params)
+        elif task == 'assembly':
+            modules.assembly.run_assembly(output_dir, input_files, task_params)
+        elif task == 'characterization':
+            modules.characterization.run_characterization(output_dir, input_files, task_params)
+        elif task == 'all':
+            # Execute tasks in the specified order
+            modules.filter.run_filter(input_dir, output_dir, input_files, task_params)
+            modules.assembly.run_assembly(output_dir, input_files, task_params)
+            modules.characterization.run_characterization(output_dir, input_files, task_params)
+        else:
+            logger.error(f"Unknown task: {task}")
 
-            elif task == 'filter':
-                input_files = [
-                    f for f in os.listdir(input_dir) 
-                    if f.endswith((".fastq", ".fastq.gz", ".fq", ".fq.gz"))
-                ]
-
-                if not input_files:
-                    print("\033[1;31m[ERROR]\033[0m No FASTQ files found in input directory.")
-                    return
-
-                modules.filter.run_filter(input_dir, output_dir, prefix, input_files, task_params)
-
-            elif task == 'assembly':
-                input_files = [
-                    f for f in os.listdir(input_dir) 
-                    if f.endswith((".fastq", ".fastq.gz", ".fq", ".fq.gz"))
-                ]
-
-                if not input_files:
-                    print("\033[1;31m[ERROR]\033[0m No FASTQ files found in input directory.")
-                    return
-
-                modules.assembly.run_assembly(input_dir, output_dir, prefix, input_files, task_params)
-            
-            elif task == 'characterization':
-                input_files = [
-                    f for f in os.listdir(input_dir) 
-                    if f.endswith((".fastq", ".fastq.gz", ".fq", ".fq.gz"))
-                ]
-
-                if not input_files:
-                    print("\033[1;31m[ERROR]\033[0m No FASTQ files found in input directory.")
-                    return
-
-                modules.characterization.run_characterization(input_dir, output_dir, prefix, input_files, task_params)
-            
-            elif task == 'all':
-                input_files = [
-                    f for f in os.listdir(input_dir) 
-                    if f.endswith((".fastq", ".fastq.gz", ".fq", ".fq.gz"))
-                ]
-
-                if not input_files:
-                    print("\033[1;31m[ERROR]\033[0m No FASTQ files found in input directory.")
-                    return
-
-                modules.filter.run_filter(input_dir, output_dir, prefix, input_files, task_params)
-                modules.assembly.run_assembly(input_dir, output_dir, prefix, input_files, task_params)
-                modules.characterization.run_characterization(input_dir, output_dir, prefix, input_files, task_params)
-
-        except ValueError as e:
-            print(f"Error reading config: {e}")
+    except ValueError as e:
+        logger.error(f"Error reading config: {e}")
 
 if __name__ == "__main__":
     main()
