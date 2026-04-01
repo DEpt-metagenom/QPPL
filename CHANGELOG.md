@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.1 - 2026-04-01 [v1.1.1 Release]
+
+### Fixed
+
+- Fixed missing `-db` in the taxmyPHAGE command (`modules/characterization.py`) so it uses the configured `taxmyphage_db` path.
+
 ## v1.1.0 - 2026-03-30 [v1.1.0 Release]
 
 ### Changed
