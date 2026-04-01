@@ -80,7 +80,7 @@ def generate_commands(characterization_dir, output_dir, file, task_params, basen
         ],
         2: [ # taxmyPhage
             f"echo \"Tool version (taxmyphage):\" $(conda list | awk '$1==\"taxmyphage\" {{print $2}}')",
-            rf"taxmyphage run -i {assembly_dir}/out_vclust/{basename}/{basename}_selected_genomes.fasta -t {task_params['characterization']['taxmyphage_threads']} -o {characterization_dir}/{OUTPUT_CHAR_DIRS[2]}/{basename}"
+            rf"taxmyphage run -i {assembly_dir}/out_vclust/{basename}/{basename}_selected_genomes.fasta -t {task_params['characterization']['taxmyphage_threads']} -db {task_params['characterization']['taxmyphage_db']} -o {characterization_dir}/{OUTPUT_CHAR_DIRS[2]}/{basename}"
         ],
         3: [ # PhaBOX2
             f"echo \"Tool version (phabox2):\" $(conda list | awk '$1==\"phabox\" {{print $2}}')",
