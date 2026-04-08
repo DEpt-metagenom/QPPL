@@ -5,7 +5,11 @@ VALID_TASKS = ['readquality', 'filter', 'assembly', 'characterization', 'all']
 
 # Config parameters: (key, type, default_value)
 PARAM_SCHEMAS = {
+    'readquality': [
+        ('seqkit_threads', 'int', 8),
+    ],
     'filter': [
+        ('seqkit_threads', 'int', 8),
         ('cut_adapter', 'str', 'y'),
         ('filter_quality', 'int', 7),
         ('filter_length', 'int', 1000),
@@ -30,7 +34,7 @@ PARAM_SCHEMAS = {
         ('wtdbg2_threads', 'int', 8),
         ('polish_threads', 'int', 2),
         ('checkv_db', 'str', '~/dbs/checkv-db-v1.5'),
-        ('checkv_threads', 'int', 8),
+        ('checkv_threads', 'int', 8)
     ],
     'characterization': [
         ('pharokka_threads', 'int', 8),
