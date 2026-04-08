@@ -45,8 +45,10 @@ def run_command(env_name, command, file, env_number):
         log_fn(line)
 
 # Function to generate commands for read quality tasks
-def generate_commands(read_quality_dir, input_dir, file, basename):
+def generate_commands(read_quality_dir, input_dir, file, basename, task_params):
     return [
+        f"echo \"Tool version (seqkit):\" $(seqkit version)",
+        f"seqkit stat -a -j {task_params['readquality']['seqkit_threads']} -T {input_dir}/{file} > {read_quality_dir}/{basename}_seqkit.tsv",
         f"echo \"Tool version (NanoQC):\" $(nanoQC --version)",
         f"nanoQC -o {read_quality_dir}/ {input_dir}/{file}",
         f"echo \"Tool version (nanoq):\" $(nanoq --version)",
@@ -92,7 +94,7 @@ def run_read_quality(input_dir, output_dir, input_files, task_params):
 
         # Run commands in environments
         for step_number, env in envs.items():
-            commands = generate_commands(read_quality_dir, input_dir, file, basename)
+            commands = generate_commands(read_quality_dir, input_dir, file, basename, task_params)
             for command in commands:
                 run_command(env["env_name"], command, file, step_number)
 
