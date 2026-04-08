@@ -17,7 +17,8 @@ OUTPUT_DIRS = {
     6: "out_polish",
     7: "out_checkv",
     8: "contigs",
-    9: "out_vclust"
+    9: "out_vclust",
+    10: "depth_coverage"
 }
 
 # All assemblers used in the assembly task
@@ -180,8 +181,16 @@ def generate_commands(assembly_dir, output_dir, file, task_params, basename, ste
             rf"if [ ! -f {assembly_dir}/{OUTPUT_DIRS[9]}/{basename}/{basename}_selected_genomes.fasta ]; then awk -F',' 'NR>1 {{print $1}}' {assembly_dir}/{OUTPUT_DIRS[9]}/{basename}/{basename}_selected_genomes.csv | while read contig_id; do cat {assembly_dir}/{OUTPUT_DIRS[8]}/{basename}/$contig_id.fa >> {assembly_dir}/{OUTPUT_DIRS[9]}/{basename}/{basename}_selected_genomes.fasta; done; fi",
             rf"rm {assembly_dir}/{OUTPUT_DIRS[9]}/{basename}/{basename}_sorted_clusters.csv {assembly_dir}/{OUTPUT_DIRS[9]}/{basename}/{basename}_sorted_summary.csv"
         ],
-        10: [ # Cleanup temporary files
-            rf"rm {assembly_dir}/filtered_{basename}.fastq"
+        10: [ # Depth and coverage
+            f"echo \"Tool version (samtools):\" $(samtools version | head -n 1)",
+            f"echo \"Tool version (minimap2):\" $(minimap2 --version)",
+            f"minimap2 -ax map-ont {assembly_dir}/{OUTPUT_DIRS[9]}/{basename}/{basename}_selected_genomes.fasta {assembly_dir}/filtered_{basename}.fastq | samtools sort -o {assembly_dir}/{OUTPUT_DIRS[10]}/{basename}.bam",
+            f"samtools index {assembly_dir}/{OUTPUT_DIRS[10]}/{basename}.bam -o {assembly_dir}/{OUTPUT_DIRS[10]}/{basename}.bam.bai",
+            f"samtools coverage {assembly_dir}/{OUTPUT_DIRS[10]}/{basename}.bam > {assembly_dir}/{OUTPUT_DIRS[10]}/{basename}_aln_temp.tsv",
+            f"awk 'BEGIN{{FS=OFS=\"\\t\"}} NR==1{{$1=\"contig\"; for(i=2;i<=NF;i++) $i=\"samtools_\"$i}} 1' {assembly_dir}/{OUTPUT_DIRS[10]}/{basename}_aln_temp.tsv > {assembly_dir}/{OUTPUT_DIRS[10]}/{basename}_aln.tsv"
+        ],
+        11: [ # Cleanup temporary files
+            rf"rm {assembly_dir}/filtered_{basename}.fastq {assembly_dir}/{OUTPUT_DIRS[10]}/{basename}_aln_temp.tsv {assembly_dir}/{OUTPUT_DIRS[10]}/{basename}.bam {assembly_dir}/{OUTPUT_DIRS[10]}/{basename}.bam.bai"
         ]
     }
     return commands_by_step.get(step_number, [])
@@ -215,6 +224,7 @@ def run_assembly(output_dir, input_files, task_params):
         8: {"env_name": "QPPL_env"},
         9: {"env_name": "QPPL_env4"},
         10: {"env_name": "QPPL_env"},
+        11: {"env_name": "QPPL_env"}
     }
 
     # Process each input file
