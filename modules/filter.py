@@ -93,11 +93,49 @@ def generate_commands(input_dir, filter_dir, file, task_params, basename):
     else:
         input_file = os.path.join(input_dir, file)
 
-    # Command for NanoLyse and NanoFilt
+    # Command for Seqkit, NanoLyse and NanoFilt
+    commands.append(f"echo \"Tool version (Seqkit):\" $(seqkit version)")
+    commands.append(f"seqkit stat -a -j {task_params['filter']['seqkit_threads']} -T {input_dir}/{file} > {filter_dir}/{basename}_pre_tmp.tsv")
+    commands.append(
+        f"""awk 'BEGIN{{FS=OFS="\\t"}} NR==1{{for(i=1;i<=NF;i++) if($i!="file" && $i!="format" && $i!="type") $i=$i"_PRE"}} 1' {filter_dir}/{basename}_pre_tmp.tsv > {filter_dir}/{basename}_seqkit_PRE.tsv"""
+    )
     commands.append(f"echo \"Tool version (NanoLyse):\" $(NanoLyse --version)")
     commands.append(f"echo \"Tool version (NanoFilt):\" $(NanoFilt --version)")
     commands.append(f"gunzip -c {input_file} | NanoLyse -r {filter_dir}/lambda.fasta | NanoLyse -r {filter_dir}/DNA_CS.fasta | NanoFilt -q {task_params['filter']['filter_quality']} -l {task_params['filter']['filter_length']} | gzip > {output_file_nanotools}")
-    commands.append(f"rm NanoLyse.log")
+    commands.append(f"seqkit stat -a -j {task_params['filter']['seqkit_threads']} -T {output_file_nanotools} > {filter_dir}/{basename}_post_tmp.tsv")
+    commands.append(
+        f"""awk 'BEGIN{{FS=OFS="\\t"}} NR==1{{for(i=1;i<=NF;i++) if($i!="file" && $i!="format" && $i!="type") $i=$i"_POST"}} 1' {filter_dir}/{basename}_post_tmp.tsv > {filter_dir}/{basename}_seqkit_POST.tsv"""
+    )
+    commands.append(
+        f"""awk 'BEGIN{{FS=OFS="\\t"}}
+        function norm(x, y) {{
+            y=x
+            sub(/^.*\\//, "", y)
+            sub(/^filtered_/, "", y)
+            sub(/^noadapter_/, "", y)
+            sub(/\\.(fastq|fq)(\\.gz)?$/, "", y)
+            return y
+        }}
+        NR==FNR {{
+            if (FNR==1) {{for(i=4;i<=NF;i++) pre_h[i]=$i; next}}
+            key=norm($1) OFS $2 OFS $3
+            for(i=4;i<=NF;i++) pre[key,i]=$i
+            next
+        }}
+        FNR==1 {{
+            header="file" OFS "format" OFS "type"
+            for(i=4;i<=NF;i++) header=header OFS pre_h[i] OFS $i
+            print header
+            next
+        }}
+        {{
+            key=norm($1) OFS $2 OFS $3
+            line=norm($1) OFS $2 OFS $3
+            for(i=4;i<=NF;i++) line=line OFS (((key SUBSEP i) in pre)?pre[key,i]:"NA") OFS $i
+            print line
+        }}' {filter_dir}/{basename}_seqkit_PRE.tsv {filter_dir}/{basename}_seqkit_POST.tsv > {filter_dir}/{basename}_seqkit_PRE_POST.tsv"""
+    )
+    commands.append(f"rm NanoLyse.log {filter_dir}/{basename}_pre_tmp.tsv {filter_dir}/{basename}_post_tmp.tsv {filter_dir}/{basename}_seqkit_PRE.tsv {filter_dir}/{basename}_seqkit_POST.tsv")
 
     return commands
 

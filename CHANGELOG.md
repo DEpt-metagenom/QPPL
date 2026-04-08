@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.2.0 - 2026-04-08 [v1.2.0 Release]
+
+### Added
+
+- Added SeqKit integration to `modules/readquality.py` and `modules/filter.py` for per-sample read statistics.
+- Added `seqkit_threads` configuration parameter to `readquality` and `filter` in `modules/config.py`.
+- Added assembly depth/coverage generation in `modules/assembly.py` (`depth_coverage`) using `minimap2` + `samtools`.
+
+### Changed
+
+- Updated `modules/assembly.py` step to include a new depth/coverage step.
+- Updated `modules/characterization.py` intermediate table generation to:
+  - reshape CDS function counts into wide format,
+  - include depth/coverage join from assembly output,
+  - update downstream genus/species prediction column indexing,
+  - expand the final CSV column selection.
+- Updated `modules/filter.py` to produce pre/post filtering SeqKit summary tables and a merged PRE/POST report.
+
 ## v1.1.1 - 2026-04-01 [v1.1.1 Release]
 
 ### Fixed
