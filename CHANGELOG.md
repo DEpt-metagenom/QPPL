@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.2.1 - 2026-04-25 [v1.2.1 Release]
+
+### Changed
+
+- Updated `modules/characterization.py` genus/species inference in the intermediate characterization table to:
+  - use consensus voting from `PhaBOX`, `Pharokka` and `vHULK` genus signals,
+  - parse additional genus/species candidates from Pharokka annotation text,
+  - improve species selection by matching species genus to the predicted genus,
+  - keep prediction empty when no confident genus consensus is found.
+- Updated the final results CSV export in `modules/characterization.py` to include host taxonomy-related fields used for prediction.
+
 ## v1.2.0 - 2026-04-08 [v1.2.0 Release]
 
 ### Added
