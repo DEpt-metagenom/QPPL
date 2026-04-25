@@ -152,7 +152,63 @@ def generate_commands(characterization_dir, output_dir, file, task_params, basen
             rf"""awk 'FNR==NR && /^>/ {{sub(/^>/, "", $1); sub(/ .*/, "", $1); contigs[$1]=0; next}} FNR>1 {{if ($2 in contigs) {{if (FILENAME ~ "card") card[$2]++; else if (FILENAME ~ "megares") megares[$2]++; else if (FILENAME ~ "ncbi") ncbi[$2]++; else if (FILENAME ~ "vfdb") vfdb[$2]++}}}} END {{print "contig\t", "abricate_card_hits\t", "abricate_megares_hits\t", "abricate_ncbi_hits\t", "abricate_vfdb_hits"; for (contig in contigs) printf "%s\t%d\t%d\t%d\t%d\n", contig, (card[contig] ? card[contig] : 0), (megares[contig] ? megares[contig] : 0), (ncbi[contig] ? ncbi[contig] : 0), (vfdb[contig] ? vfdb[contig] : 0)}}' {assembly_dir}/out_vclust/{basename}/{basename}_selected_genomes.fasta {characterization_dir}/out_abricate/{basename}/card_{basename}.abr {characterization_dir}/out_abricate/{basename}/megares_{basename}.abr {characterization_dir}/out_abricate/{basename}/ncbi_{basename}.abr {characterization_dir}/out_abricate/{basename}/vfdb_{basename}.abr > {characterization_dir}/out_abricate/{basename}/{basename}_abricate_final.tsv""",
             #
             rf"""join -t $'\t' <(sort -k1,1 {characterization_dir}/out_phabox/{basename}/{basename}_phabox_final.tsv) <(sort -k1,1 {characterization_dir}/out_pharokka/{basename}/{basename}_final.tsv) | join -t $'\t' - <(sort -k1,1 {assembly_dir}/out_vclust/{basename}/{basename}_selected_genomes_final.tsv) | join -t $'\t' - <(sort -k1,1 {characterization_dir}/out_abricate/{basename}/{basename}_abricate_final.tsv) | join -t $'\t' - <(sort -k1,1 {characterization_dir}/out_vhulk/{basename}/{basename}_vHULK_final.tsv) | join -t $'\t' - <(sort -k1,1 {characterization_dir}/out_taxmyphage/{basename}/{basename}_taxmyphage_final.tsv) | join -t $'\t' - <(sort -k1,1 {assembly_dir}/depth_coverage/{basename}_aln.tsv) | awk -v sample="{basename}" 'BEGIN {{OFS=FS="\t"}} NR==1 {{print "sample", $0}} NR>1 {{print sample, $0}}' > {characterization_dir}/intermediate/{basename}_characterization_tmp.tsv""",
-            rf"""awk -F'\t' 'NR==1{{print $0 "\tpredicted_genus\tpredicted_species"; next}} {{delete count; if($89!="")count[$89]++; if($60!="")count[$60]++; if($33!="")count[$33]++; predicted_genus=""; max_count=0; for(val in count) if(count[val]>max_count){{predicted_genus=val; max_count=count[val]}} if(max_count<=1) predicted_genus=""; predicted_species=""; if($92!=""&&$34!=""&&$92==$34) predicted_species=$92; print $0 "\t" predicted_genus "\t" predicted_species}}' {characterization_dir}/intermediate/{basename}_characterization_tmp.tsv > {characterization_dir}/intermediate/{basename}_characterization_full.tsv""",
+            rf"""awk -F'\t' 'NR==1{{print $0 "\tpredicted_genus\tpredicted_species"; next}} {{
+                delete count;
+                delete species_by_genus;
+                if($89!="")count[$89]++;
+                if($60!="")count[$60]++;
+
+                genus_from_14="";
+                species92=$92;
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", species92);
+                species92_genus="";
+                if(species92!=""){{
+                    split(species92, sp92_parts, /[[:space:]]+/);
+                    species92_genus=sp92_parts[1];
+                }}
+                if($14!="" && $14!="-"){{
+                    n=split($14, entries, /\\n|\r/);
+                    for(i=1; i<=n; i++){{
+                        e=entries[i];
+                        gsub(/^[[:space:]]+|[[:space:]]+$/, "", e);
+                        if(e=="" || e=="-") continue;
+
+                        if(e ~ /^genus:/){{
+                            sub(/^genus:/, "", e);
+                            split(e, parts, /[[:space:]]+/);
+                            genus_from_14=parts[1];
+                            break;
+                        }}
+
+                        if(e ~ /^species:/){{
+                            species14=e;
+                            sub(/^species:/, "", species14);
+                            gsub(/^[[:space:]]+|[[:space:]]+$/, "", species14);
+                            if(genus_from_14==""){{
+                                split(species14, parts, /[[:space:]]+/);
+                                genus_from_14=parts[1];
+                            }}
+                            split(species14, sp14_parts, /[[:space:]]+/);
+                            sp14_genus=sp14_parts[1];
+                            if(species_by_genus[sp14_genus]=="") species_by_genus[sp14_genus]=species14;
+                        }}
+                    }}
+                }}
+                if(genus_from_14!="")count[genus_from_14]++;
+
+                predicted_genus="";
+                max_count=0;
+                for(val in count) if(count[val]>max_count){{predicted_genus=val; max_count=count[val]}}
+                if(max_count<=1) predicted_genus="";
+
+                predicted_species="";
+                if(predicted_genus!=""){{
+                    if(species92!="" && species92_genus==predicted_genus) predicted_species=species92;
+                    else if(species_by_genus[predicted_genus]!="") predicted_species=species_by_genus[predicted_genus];
+                }}
+                delete species_by_genus;
+                print $0 "\t" predicted_genus "\t" predicted_species
+            }}' {characterization_dir}/intermediate/{basename}_characterization_tmp.tsv > {characterization_dir}/intermediate/{basename}_characterization_full.tsv""",
             rf"""rm {characterization_dir}/intermediate/{basename}_characterization_tmp.tsv"""
         ],
         7: [ # RESULTS
@@ -160,7 +216,7 @@ def generate_commands(characterization_dir, output_dir, file, task_params, basen
             rf"mkdir -p {output_dir}/results/genomes/{basename}",
             rf"seqkit replace -p 'rotated.*' -r '' {characterization_dir}/out_pharokka/{basename}/{basename}_dnaapler_reoriented.fasta | seqkit seq -w 0 | seqkit split -i --by-id-prefix '{basename}_' -O {output_dir}/results/genomes/{basename}/",
             #
-            rf"""awk -F'\t' '{{print $1","$2","$35","$36","$38","$39","$40","$41","$42","$110","$111","$106","$107","$109","$108","$112","$113","$75","$76","$77","$78","$79","$80","$81","$82","$83","$4","$12","$85","$86","$87","$88","$95","$96","$97","$98","$99","$100","$101","$102","$103","$114","$115}}' {characterization_dir}/intermediate/{basename}_characterization_full.tsv > {output_dir}/results/{basename}_final_results.csv"""
+            rf"""awk -F'\t' '{{print $1","$2","$35","$36","$38","$39","$40","$41","$42","$110","$111","$106","$107","$109","$108","$112","$113","$75","$76","$77","$78","$79","$80","$81","$82","$83","$4","$12","$85","$86","$87","$88","$95","$96","$97","$98","$99","$100","$101","$102","$103","$60","$89","$14","$92","$114","$115}}' {characterization_dir}/intermediate/{basename}_characterization_full.tsv > {output_dir}/results/{basename}_final_results.csv"""
         ]
     }
     return commands_by_step.get(step_number, [])
