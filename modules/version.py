@@ -1,4 +1,4 @@
-VERSION = "v1.2.0"
+VERSION = "v1.2.1"
 LOGO = f"""
 ######### QPPL (Quick Phage PipeLine) {VERSION} ##########
        ______        _____        _____    ____
