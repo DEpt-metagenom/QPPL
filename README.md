@@ -6,6 +6,32 @@
 
 This tool is designed to aid the work with phages, that were sequenced using Nanopore technology. QPPL is using multiple tools to create and characterize phage genome assemblies while every data stays on the user's computer.
 
+## Fixes implemented by Tinhornfish
+
+Goldrush/goldpolish deadlock — Fixed by writing a watchdog which detects zombie child processes then kills the entire process group with `SIGKILL`.
+
+Added `.{basename}.done` cache files for reruns
+
+Missing `-p` on mkdir for reruns
+
+`gzip noadapter.fastq` silently failed because `.fastq.gz` already existed — ixed by detecting whether the noadapter file already exists and skipping porechop entirely if so
+
+Missing `-f` flag on pharokka for reruns
+
+`mv ~/vHULK/{basename}` into an existing directory caused outputs to land at `out_vhulk/{basename}/{basename}/predictions/`. Fixed by doing `rm -rf {dest}` before `mv`
+
+### Conda Environment Fixes — MANUAL
+
+Pharokka v1.7.3 → v1.8.0 — Old conda package pinned MMseqs2 to v13; pharokka v1.8.0 requires v14+. Fixed by `conda remove pharokka --force`, then `conda install mmseqs2>=14`, then `pip install pharokka==1.8.0`
+
+dnaapler version — Pharokka v1.8.0 requires dnaapler ≥ v1.0.1 but v0.8.1 was installed. Fixed with `pip install "dnaapler>=1.0.1"`
+
+NumPy 1.x/2.x incompatibility — phabox2 broke with numpy 2.x. Fixed with `pip install "numpy<2"` in both QPPL_env and QPPL_env3
+
+PyTorch execstack crash — PyTorch 2.4.1 had the execstack bit set, which the kernel security policy blocked. Fixed by downgrading to `torch==2.1.2+cpu`
+
+taxmyPHAGE database filename **caveman fix** — taxmyPHAGE v0.3.6 expected ICTV_2024.msh but the database file was named ICTV.msh. Fixed with `mv ICTV.msh ICTV_2024.msh`
+
 ## Usage
 
 1. Clone the repository:

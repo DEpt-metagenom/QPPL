@@ -83,15 +83,32 @@ def generate_commands(input_dir, filter_dir, file, task_params, basename):
     if not os.path.exists(dna_cs_fasta_path):
         download_file(DNA_CS_FASTA_URL, dna_cs_fasta_path)
 
+    # Resolve which noadapter file already exists (uncompressed takes priority since
+    # it is the freshest porechop output; .gz is the archived form from a prior run).
+    noadapter_fastq = output_file_porechop
+    noadapter_gz    = output_file_porechop + ".gz"
+    noadapter_cached = os.path.exists(noadapter_fastq) or os.path.exists(noadapter_gz)
+
     # Add commands based on whether to cut adapters
     if task_params['filter']['cut_adapter'] == 'y':
-        commands.append(f"echo \"Tool version (porechop_abi):\" $(porechop_abi --version)")
-        commands.append(f"porechop_abi -abi --discard_middle -i {input_dir}/{file} -o {output_file_porechop} --format fastq -t {task_params['filter']['porechop_threads']} --verbosity 0")
-        commands.append(f"gzip {output_file_porechop}")
-        input_file = output_file_porechop
-        commands.append(f"rm -r tmp")
+        if noadapter_cached:
+            logger.info(f"Skipping porechop for {file} — cached noadapter file found")
+        else:
+            commands.append(f"echo \"Tool version (porechop_abi):\" $(porechop_abi --version)")
+            commands.append(f"porechop_abi -abi --discard_middle -i {input_dir}/{file} -o {output_file_porechop} --format fastq -t {task_params['filter']['porechop_threads']} --verbosity 0")
+            commands.append(f"gzip {output_file_porechop}")
+            commands.append(f"rm -r tmp")
+
+        # Point to whichever noadapter form exists; prefer uncompressed (no gunzip overhead).
+        if os.path.exists(noadapter_fastq):
+            input_file = noadapter_fastq
+            read_cmd = f"cat {input_file}"
+        else:
+            input_file = noadapter_gz
+            read_cmd = f"gunzip -c {input_file}"
     else:
         input_file = os.path.join(input_dir, file)
+        read_cmd = f"gunzip -c {input_file}"
 
     # Command for Seqkit, NanoLyse and NanoFilt
     commands.append(f"echo \"Tool version (Seqkit):\" $(seqkit version)")
@@ -101,7 +118,7 @@ def generate_commands(input_dir, filter_dir, file, task_params, basename):
     )
     commands.append(f"echo \"Tool version (NanoLyse):\" $(NanoLyse --version)")
     commands.append(f"echo \"Tool version (NanoFilt):\" $(NanoFilt --version)")
-    commands.append(f"gunzip -c {input_file} | NanoLyse -r {filter_dir}/lambda.fasta | NanoLyse -r {filter_dir}/DNA_CS.fasta | NanoFilt -q {task_params['filter']['filter_quality']} -l {task_params['filter']['filter_length']} | gzip > {output_file_nanotools}")
+    commands.append(f"{read_cmd} | NanoLyse -r {filter_dir}/lambda.fasta | NanoLyse -r {filter_dir}/DNA_CS.fasta | NanoFilt -q {task_params['filter']['filter_quality']} -l {task_params['filter']['filter_length']} | gzip > {output_file_nanotools}")
     commands.append(f"seqkit stat -a -j {task_params['filter']['seqkit_threads']} -T {output_file_nanotools} > {filter_dir}/{basename}_post_tmp.tsv")
     commands.append(
         f"""awk 'BEGIN{{FS=OFS="\\t"}} NR==1{{for(i=1;i<=NF;i++) if($i!="file" && $i!="format" && $i!="type") $i=$i"_POST"}} 1' {filter_dir}/{basename}_post_tmp.tsv > {filter_dir}/{basename}_seqkit_POST.tsv"""
@@ -161,7 +178,12 @@ def run_filter(input_dir, output_dir, input_files, task_params):
     # Process each input file
     for file in input_files:
         basename = re.sub(r'(\.fastq|\.fastq\.gz|\.fq|\.fq\.gz)$', '', file, flags=re.IGNORECASE)
-        
+        done_marker = os.path.join(filter_dir, f".{basename}.done")
+
+        if os.path.exists(done_marker):
+            logger.info(f"Skipping file: {file} (already filtered in a previous run)")
+            continue
+
         # Start task timer per file
         start_time = time.time()
 
@@ -173,6 +195,8 @@ def run_filter(input_dir, output_dir, input_files, task_params):
             commands = generate_commands(input_dir, filter_dir, file, task_params, basename)
             for command in commands:
                 run_command(envs[step_number]["env_name"], command, file, step_number)
+
+        open(done_marker, "w").close()
 
         # Calculate elapsed time per file
         elapsed = time.time() - start_time
