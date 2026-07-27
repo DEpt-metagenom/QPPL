@@ -6,32 +6,6 @@
 
 This tool is designed to aid the work with phages, that were sequenced using Nanopore technology. QPPL is using multiple tools to create and characterize phage genome assemblies while every data stays on the user's computer.
 
-## Fixes implemented by Tinhornfish
-
-Goldrush/goldpolish deadlock — Fixed by writing a watchdog which detects zombie child processes then kills the entire process group with `SIGKILL`.
-
-Added `.{basename}.done` cache files for reruns
-
-Missing `-p` on mkdir for reruns
-
-`gzip noadapter.fastq` silently failed because `.fastq.gz` already existed — ixed by detecting whether the noadapter file already exists and skipping porechop entirely if so
-
-Missing `-f` flag on pharokka for reruns
-
-`mv ~/vHULK/{basename}` into an existing directory caused outputs to land at `out_vhulk/{basename}/{basename}/predictions/`. Fixed by doing `rm -rf {dest}` before `mv`
-
-### Conda environment fixes — now automatic (`python QPPL.py -ie`)
-
-These used to be manual post-install steps; `-ie` applies them itself and skips
-any that are already in place, so reruns are safe and fast:
-
-- Pharokka v1.7.3 → v1.8.0 — Old conda package pinned MMseqs2 to v13; pharokka v1.8.0 requires v14+. Fixed by `conda remove pharokka --force`, then `conda install mmseqs2>=14`, then `pip install pharokka==1.8.0`
-- dnaapler version — Pharokka v1.8.0 requires dnaapler ≥ v1.0.1 but v0.8.1 was installed. Fixed with `pip install "dnaapler>=1.0.1"`
-- NumPy 1.x/2.x incompatibility — phabox2 broke with numpy 2.x. Fixed with `pip install "numpy<2"` in QPPL_env3
-- PyTorch execstack crash (QPPL_env2) — medaka's PyTorch 2.3.1 had the execstack bit set, which the kernel security policy blocked. Fixed in place with `patchelf --clear-execstack` on `libtorch_cpu.so`
-- PyTorch execstack crash (QPPL_env3) — phabox2's PyTorch 2.4.1 hit the same issue; fixed by downgrading to `torch==2.1.2+cpu` instead, since phabox2 doesn't pin a specific torch version
-- taxmyPHAGE database filename mismatch — only ever happened when installing taxmyPHAGE into a separate scratch environment; running `taxmyphage install` inside the same environment used to run it avoids the issue entirely
-
 ## Usage
 
 1. Clone the repository:
@@ -130,16 +104,17 @@ Generate config with `python QPPL.py -gc`. Current structure:
 
 ## External dependencies and databases
 
-QPPL runs tools inside dedicated Conda environments and expects the following resources to be installed/configured. `python QPPL.py -ie` and `python QPPL.py -dd` (see Usage above) set all of this up automatically:
+QPPL runs tools inside dedicated Conda environments and expects the following resources to be installed/configured: 
 
 - CheckV database (`checkv_db`)
 - Pharokka database (`pharokka_db`)
 - taxmyPHAGE database (`taxmyphage_db`)
 - PhaBOX database (`phabox_db`)
 - vHULK installation and database (`vhulk_location`)
+  
+`python QPPL.py -ie` and `python QPPL.py -dd` (see Usage above) **to set all of these up automatically**
 
-Also ensure `conda` is available in your shell PATH.
-
+Ensure `conda` is available in your shell PATH.
 
 ## How to Run
 
@@ -149,7 +124,7 @@ Also ensure `conda` is available in your shell PATH.
 4. Run `python QPPL.py -gc` to generate the default config file.
 5. Edit `qppl.conf` to reflect system resources, database locations, preferred parameters, selected task.
 6. Place raw reads into `input_dir`, defined in `qppl.conf`.
-7. Run `python QPPL.py` (uses `qppl.conf` by default), or run `python QPPL.py -c [somename].conf` to use a different config file.
+7. Run `python QPPL.py` (uses `qppl.conf` by default), or run `python QPPL.py -c [filename].conf` to use a different config file.
 
 ## Directory Structure
 
