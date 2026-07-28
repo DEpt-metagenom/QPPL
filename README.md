@@ -12,33 +12,32 @@ This tool is designed to aid the work with phages, that were sequenced using Nan
 
    `git clone https://github.com/DEpt-metagenom/QPPL.git`
 
-2. Create required Conda environments from `envs/`:
+2. Create all required Conda environments, and clone vHULK:
 
-   `conda env create -f envs/QPPL_env.yml`
+   `python QPPL.py -ie`
 
-   `conda env create -f envs/QPPL_env2.yml`
+   (Pass `--vhulk-dir <path>` to clone vHULK somewhere other than the default `~/vHULK`.)
 
-   `conda env create -f envs/QPPL_env3.yml`
+3. Download the CheckV, Pharokka, taxmyPHAGE and PhaBOX databases into `Databases/`:
 
-   `conda env create -f envs/QPPL_env4.yml`
+   `python QPPL.py -dd`
 
-   `conda env create -f envs/vHULK_env.yml`
+   (Pass `--databases-dir <path>` to use a different location.) Both `-ie` and `-dd`
+   are safe to re-run — anything already installed/downloaded is skipped.
 
-3. Clone the vHULK repository and install its database.
-
-4. Install all databases to a specific location (CheckV, Pharokka, taxmyPHAGE, PhaBOX, vHULK).
-
-5. Generate a default config:
+4. Generate a default config:
 
    `python QPPL.py -gc`
 
-6. Edit `qppl.conf` paths/tasks/parameters as needed.
+5. Edit `qppl.conf` paths/tasks/parameters as needed (point `checkv_db`, `pharokka_db`,
+   `taxmyphage_db`, `phabox_db` at the paths under `Databases/`, and `vhulk_location`
+   at the directory used in step 2).
 
-7. Put input reads into `input_dir` (configured in `[General]`).
+6. Put input reads into `input_dir` (configured in `[General]`).
 
    Supported extensions: `.fastq`, `.fastq.gz`, `.fq`, `.fq.gz`.
 
-8. Run:
+7. Run:
 
    `python QPPL.py -c qppl.conf`
 
@@ -52,6 +51,10 @@ Available options:
 - `-v`, `--version`: show logo/version
 - `-gc`, `--generate-config`: create default `qppl.conf`
 - `-c`, `--config`: path to config file (default: `qppl.conf`)
+- `-ie`, `--install-envs`: create (or fix) all conda environments needed by QPPL, and clone vHULK
+- `--vhulk-dir`: destination directory to clone vHULK into (used with `-ie`, default `~/vHULK`)
+- `-dd`, `--download-databases`: download the CheckV, Pharokka, taxmyPHAGE and PhaBOX databases into `Databases/`
+- `--databases-dir`: destination directory for downloaded databases (used with `-dd`, default `Databases`)
 
 ## Tasks
 
@@ -101,27 +104,27 @@ Generate config with `python QPPL.py -gc`. Current structure:
 
 ## External dependencies and databases
 
-QPPL runs tools inside dedicated Conda environments and expects the following resources to be installed/configured:
+QPPL runs tools inside dedicated Conda environments and expects the following resources to be installed/configured: 
 
 - CheckV database (`checkv_db`)
 - Pharokka database (`pharokka_db`)
 - taxmyPHAGE database (`taxmyphage_db`)
 - PhaBOX database (`phabox_db`)
 - vHULK installation and database (`vhulk_location`)
+  
+`python QPPL.py -ie` and `python QPPL.py -dd` (see Usage above) **to set all of these up automatically**
 
-Also ensure `conda` is available in your shell PATH.
-
+Ensure `conda` is available in your shell PATH.
 
 ## How to Run
 
 1. **[FIRST RUN ONLY]** Clone the QPPL repository and move into it.
-2. **[FIRST RUN ONLY]** Create all Conda envs from `envs/`.
-3. **[FIRST RUN ONLY]** Install databases for CheckV, Pharokka, taxmyPHAGE, PhaBOX.
-4. **[FIRST RUN ONLY]** Clone the vHULK repository, move into it and install its database.
-5. Run `python QPPL.py -gc` to generate the default config file.
-6. Edit `qppl.conf` to reflect system resources, database locations, preferred parameters, selected task.
-7. Place raw reads into `input_dir`, defined in `qppl.conf`.
-8. Run `python QPPL.py` (uses `qppl.conf` by default), or run `python QPPL.py -c [somename].conf` to use a different config file.
+2. **[FIRST RUN ONLY]** Run `python QPPL.py -ie` to create/fix all Conda envs and clone vHULK.
+3. **[FIRST RUN ONLY]** Run `python QPPL.py -dd` to download the CheckV, Pharokka, taxmyPHAGE and PhaBOX databases into `Databases/`.
+4. Run `python QPPL.py -gc` to generate the default config file.
+5. Edit `qppl.conf` to reflect system resources, database locations, preferred parameters, selected task.
+6. Place raw reads into `input_dir`, defined in `qppl.conf`.
+7. Run `python QPPL.py` (uses `qppl.conf` by default), or run `python QPPL.py -c [filename].conf` to use a different config file.
 
 ## Directory Structure
 

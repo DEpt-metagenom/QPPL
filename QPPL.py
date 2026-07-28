@@ -8,6 +8,8 @@ import modules.filter
 import modules.assembly
 import modules.characterization
 import modules.readquality
+import modules.setup
+import modules.databases
 
 # Logger setup with color support
 class ColorFormatter(logging.Formatter):
@@ -47,6 +49,14 @@ def main():
     
     if args.generate_config:
         modules.config.generate_default_config()
+        return
+
+    if args.install_envs:
+        modules.setup.run_install_envs(os.path.expanduser(args.vhulk_dir))
+        return
+
+    if args.download_databases:
+        modules.databases.run_download_databases(args.databases_dir)
         return
 
     try:

@@ -30,4 +30,26 @@ def create_parser():
         default='qppl.conf',
         help="Path to the configuration file"
     )
+    parser.add_argument(
+        "-ie", "--install-envs",
+        action="store_true",
+        help="Create (or fix) all conda environments needed by QPPL, and clone vHULK"
+    )
+    parser.add_argument(
+        "--vhulk-dir",
+        type=str,
+        default='~/vHULK',
+        help="Destination directory to clone vHULK into (used with -ie)"
+    )
+    parser.add_argument(
+        "-dd", "--download-databases",
+        action="store_true",
+        help="Download the CheckV, Pharokka, taxmyPHAGE and PhaBOX databases into a Databases/ subdirectory"
+    )
+    parser.add_argument(
+        "--databases-dir",
+        type=str,
+        default='Databases',
+        help="Destination directory for downloaded databases (used with -dd)"
+    )
     return parser

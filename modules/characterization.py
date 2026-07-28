@@ -75,7 +75,7 @@ def generate_commands(characterization_dir, output_dir, file, task_params, basen
     commands_by_step = {
         1: [  # Pharokka
             f"echo \"Tool version (pharokka):\" $(pharokka.py --version)",
-            rf"""if [ $(grep -c ">" {assembly_dir}/out_vclust/{basename}/{basename}_selected_genomes.fasta) -gt 1 ]; then pharokka.py -i {assembly_dir}/out_vclust/{basename}/{basename}_selected_genomes.fasta -o {characterization_dir}/out_pharokka/{basename} -t {task_params['characterization']['pharokka_threads']} -m --dnaapler -p {basename} -d {task_params['characterization']['pharokka_db']} -g prodigal-gv; else pharokka.py -i {assembly_dir}/out_vclust/{basename}/{basename}_selected_genomes.fasta -o {characterization_dir}/out_pharokka/{basename} -t {task_params['characterization']['pharokka_threads']} --dnaapler -p {basename} -d {task_params['characterization']['pharokka_db']} -g prodigal-gv; fi""",
+            rf"""if [ -f {assembly_dir}/out_vclust/{basename}/{basename}_selected_genomes.fasta ] && [ $(grep -c ">" {assembly_dir}/out_vclust/{basename}/{basename}_selected_genomes.fasta) -gt 1 ]; then pharokka.py -i {assembly_dir}/out_vclust/{basename}/{basename}_selected_genomes.fasta -o {characterization_dir}/out_pharokka/{basename} -t {task_params['characterization']['pharokka_threads']} -f -m --dnaapler -p {basename} -d {task_params['characterization']['pharokka_db']} -g prodigal-gv; elif [ -f {assembly_dir}/out_vclust/{basename}/{basename}_selected_genomes.fasta ]; then pharokka.py -i {assembly_dir}/out_vclust/{basename}/{basename}_selected_genomes.fasta -o {characterization_dir}/out_pharokka/{basename} -t {task_params['characterization']['pharokka_threads']} -f --dnaapler -p {basename} -d {task_params['characterization']['pharokka_db']} -g prodigal-gv; fi""",
             rf"""awk '/^LOCUS/ {{ if (out) close(out); out = "{characterization_dir}/out_pharokka/{basename}/" substr($2, 1) ".gbk"; print "Creating file:", out; }} {{ print > out }}' {characterization_dir}/out_pharokka/{basename}/{basename}.gbk"""
         ],
         2: [ # taxmyPhage
@@ -88,11 +88,11 @@ def generate_commands(characterization_dir, output_dir, file, task_params, basen
         ],
         4: [ # vHULK
             f"echo \"Tool version (vHULK):\" $(cd ~/vHULK && python ~/vHULK/vHULK.py --version && cd - >/dev/null)",
-            rf"mkdir {task_params['characterization']['vhulk_location']}/{basename}",
-            rf"mkdir {task_params['characterization']['vhulk_location']}/{basename}_in",
+            rf"mkdir -p {task_params['characterization']['vhulk_location']}/{basename}",
+            rf"mkdir -p {task_params['characterization']['vhulk_location']}/{basename}_in",
             rf"seqkit split -i {assembly_dir}/out_vclust/{basename}/{basename}_selected_genomes.fasta -O {task_params['characterization']['vhulk_location']}/{basename}_in --extension '.fasta'",
             rf"cd {task_params['characterization']['vhulk_location']} && python vHULK.py -i {basename}_in -o {basename} -t {task_params['characterization']['vhulk_threads']} && cd -",
-            rf"mv {task_params['characterization']['vhulk_location']}/{basename} {characterization_dir}/out_vhulk/{basename}",
+            rf"rm -rf {characterization_dir}/out_vhulk/{basename} && mv {task_params['characterization']['vhulk_location']}/{basename} {characterization_dir}/out_vhulk/{basename}",
             rf"rm -r {task_params['characterization']['vhulk_location']}/{basename}_in",
             rf"echo 'contig,pred_genus,score_genus,entropy_genus,pred_species,score_species,entropy_species' > {characterization_dir}/out_vhulk/{basename}/{basename}_vHULK.csv",
             rf"""
@@ -105,7 +105,7 @@ def generate_commands(characterization_dir, output_dir, file, task_params, basen
         ],
         5: [ # ABRICATE
             f"echo \"Tool version (abricate):\" $(abricate --version)",
-            rf"mkdir {characterization_dir}/out_abricate/{basename}",
+            rf"mkdir -p {characterization_dir}/out_abricate/{basename}",
             rf"abricate -db vfdb {assembly_dir}/out_vclust/{basename}/{basename}_selected_genomes.fasta --quiet > {characterization_dir}/out_abricate/{basename}/vfdb_{basename}.abr",
             rf"abricate -db card {assembly_dir}/out_vclust/{basename}/{basename}_selected_genomes.fasta --quiet > {characterization_dir}/out_abricate/{basename}/card_{basename}.abr",
             rf"abricate -db ncbi {assembly_dir}/out_vclust/{basename}/{basename}_selected_genomes.fasta --quiet > {characterization_dir}/out_abricate/{basename}/ncbi_{basename}.abr",

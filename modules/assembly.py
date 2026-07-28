@@ -2,6 +2,7 @@ import os
 import subprocess
 import re
 import logging
+import signal
 import time
 
 # Call logger
@@ -48,16 +49,73 @@ def setup_logging(log_path):
             logger.removeHandler(h)
     logger.addHandler(file_handler)
 
+# Poll interval (seconds) while waiting for a command, and hard ceiling for
+# hangs the zombie-child check below doesn't catch.
+WATCHDOG_POLL_INTERVAL = 10
+WATCHDOG_HARD_TIMEOUT = 6 * 60 * 60
+
+# Direct children of pid, via the Linux /proc children interface.
+def _direct_children(pid):
+    try:
+        with open(f"/proc/{pid}/task/{pid}/children") as f:
+            return [int(p) for p in f.read().split()]
+    except (FileNotFoundError, ProcessLookupError):
+        return []
+
+def _is_zombie(pid):
+    try:
+        with open(f"/proc/{pid}/status") as f:
+            for line in f:
+                if line.startswith("State:"):
+                    return line.split()[1] == "Z"
+    except (FileNotFoundError, ProcessLookupError):
+        return False
+    return False
+
+# conda run's wrapper process can get stuck reading from its bash child's
+# stdout/stderr pipe forever if the child exits (goes zombie) but leaves
+# orphaned grandchildren (e.g. goldrush's goldpolish-autoclean) holding the
+# inherited pipe fds open. Detect that exact shape instead of guessing a timeout.
+def _has_zombie_child(pid):
+    return any(_is_zombie(child) for child in _direct_children(pid))
+
 # Function to run a command in a conda environment
 def run_command(env_name, command, file, env_number):
     log_to_file_only(f"Running command in {env_name} on {file}: $ {command}", logging.INFO)
-    result = subprocess.run(["conda", "run", "-n", env_name, "bash", "-c", command], text=True, capture_output=True)
+    proc = subprocess.Popen(
+        ["conda", "run", "-n", env_name, "bash", "-c", command],
+        text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        start_new_session=True,
+    )
 
-    if result.returncode != 0:
-        logger.error(f"Tool failed for file: {file} (step {env_number})\nCommand: {command}\nError: {result.stderr.strip()}")
+    start_time = time.time()
+    hang_reason = None
+    while True:
+        try:
+            stdout, stderr = proc.communicate(timeout=WATCHDOG_POLL_INTERVAL)
+            break
+        except subprocess.TimeoutExpired:
+            if _has_zombie_child(proc.pid):
+                hang_reason = "a zombie child process with live orphaned grandchildren still holding the output pipe open (goldrush/goldpolish-autoclean-style deadlock)"
+            elif time.time() - start_time > WATCHDOG_HARD_TIMEOUT:
+                hang_reason = f"exceeded the {WATCHDOG_HARD_TIMEOUT}s hard timeout"
+            if hang_reason:
+                try:
+                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                stdout, stderr = proc.communicate()
+                break
+
+    if hang_reason:
+        logger.error(f"Watchdog killed hung command for file: {file} (step {env_number}) — {hang_reason}\nCommand: {command}")
         return
-    
-    out = result.stdout.strip()
+
+    if proc.returncode != 0:
+        logger.error(f"Tool failed for file: {file} (step {env_number})\nCommand: {command}\nError: {stderr.strip()}")
+        return
+
+    out = stdout.strip()
     if not out:
         return
 
@@ -151,18 +209,18 @@ def generate_commands(assembly_dir, output_dir, file, task_params, basename, ste
         ],
         7: [ # Quality assessment
             f"echo \"Tool version (CheckV):\" $(checkv -h 2>&1 | head -n1 | cut -d':' -f1)",
-            rf"mkdir {assembly_dir}/{OUTPUT_DIRS[7]}/{basename}",
+            rf"mkdir -p {assembly_dir}/{OUTPUT_DIRS[7]}/{basename}",
             *[rf"for asm in {' '.join(ASSEMBLERS.values())}; do cat {assembly_dir}/{OUTPUT_DIRS[6]}/{basename}_polished_$asm.fa >> {assembly_dir}/{OUTPUT_DIRS[7]}/{basename}/{basename}_polished.fa; done"],
             f"checkv end_to_end {assembly_dir}/{OUTPUT_DIRS[7]}/{basename}/{basename}_polished.fa {assembly_dir}/{OUTPUT_DIRS[7]}/{basename} -d {task_params['assembly']['checkv_db']} -t {task_params['assembly']['checkv_threads']}"
         ],
         8: [ # Low or medium quality and contaminated contig removal
             rf"csvcut -t -c contig_id,contig_length,gene_count,viral_genes,host_genes,checkv_quality,miuvig_quality,completeness,completeness_method,contamination,kmer_freq {assembly_dir}/{OUTPUT_DIRS[7]}/{basename}/quality_summary.tsv | csvgrep -c miuvig_quality -m High-quality | awk -F, '$5 <= $4' > {assembly_dir}/{OUTPUT_DIRS[7]}/{basename}/{basename}_summary.csv",
-            rf"mkdir {assembly_dir}/{OUTPUT_DIRS[8]}/{basename}",
+            rf"mkdir -p {assembly_dir}/{OUTPUT_DIRS[8]}/{basename}",
             rf"awk -F',' 'NR>1 {{print $1}}' {assembly_dir}/{OUTPUT_DIRS[7]}/{basename}/{basename}_summary.csv | while IFS= read -r contig; do seqtk subseq {assembly_dir}/{OUTPUT_DIRS[7]}/{basename}/{basename}_polished.fa <(echo $contig) > {assembly_dir}/{OUTPUT_DIRS[8]}/{basename}/$contig.fa; done"
         ],
         9: [ # Clustering and selection of representative contigs
             f"echo \"Tool version (vclust):\" $(vclust --version)",
-            rf"mkdir {assembly_dir}/{OUTPUT_DIRS[9]}/{basename}",
+            rf"mkdir -p {assembly_dir}/{OUTPUT_DIRS[9]}/{basename}",
             rf"cat {assembly_dir}/{OUTPUT_DIRS[8]}/{basename}/*.fa > {assembly_dir}/{OUTPUT_DIRS[9]}/{basename}/{basename}_contigs.fa",
             rf"if [ $(grep -c '>' {assembly_dir}/{OUTPUT_DIRS[9]}/{basename}/{basename}_contigs.fa) -eq 1 ]; then cp {assembly_dir}/{OUTPUT_DIRS[9]}/{basename}/{basename}_contigs.fa {assembly_dir}/{OUTPUT_DIRS[9]}/{basename}/{basename}_selected_genomes.fasta; fi",
             rf"if [ ! -f {assembly_dir}/{OUTPUT_DIRS[9]}/{basename}/{basename}_selected_genomes.fasta ]; then vclust prefilter -i {assembly_dir}/{OUTPUT_DIRS[9]}/{basename}/{basename}_contigs.fa -o {assembly_dir}/{OUTPUT_DIRS[9]}/{basename}/{basename}_fltr.txt --min-ident 0.7; fi",
@@ -230,7 +288,12 @@ def run_assembly(output_dir, input_files, task_params):
     # Process each input file
     for file in input_files:
         basename = re.sub(r'(\.fastq|\.fastq\.gz|\.fq|\.fq\.gz)$', '', file, flags=re.IGNORECASE)
-        
+        done_marker = os.path.join(assembly_dir, f".{basename}.done")
+
+        if os.path.exists(done_marker):
+            logger.info(f"Skipping file: {file} (already completed in a previous run)")
+            continue
+
         # Start task timer per file
         start_time = time.time()
 
@@ -242,6 +305,8 @@ def run_assembly(output_dir, input_files, task_params):
             commands = generate_commands(assembly_dir, output_dir, file, task_params, basename, step_number)
             for command in commands:
                 run_command(envs[step_number]['env_name'], command, file, step_number)
+
+        open(done_marker, "w").close()
 
         # Log time taken for the file
         elapsed = time.time() - start_time
