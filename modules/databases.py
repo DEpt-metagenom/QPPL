@@ -3,6 +3,7 @@ import glob
 import shutil
 import logging
 import time
+import urllib.request
 
 from modules.setup import REPO_ROOT, conda_env_exists, run_live, run_quiet
 
@@ -10,6 +11,15 @@ from modules.setup import REPO_ROOT, conda_env_exists, run_live, run_quiet
 logger = logging.getLogger("QPPL")
 
 PHABOX_DB_URL = "https://github.com/KennthShang/PhaBOX/releases/download/v2/phabox_db_v2_2.zip"
+
+VMR_URL = "https://ictv.global/vmr/current"
+# ICTV's server 403s the default User-Agent used by both urllib and the `wget`
+# pip package (which taxmyphage's own downloader relies on), but allows a
+# browser-like one through to a 307 redirect -> 200. Verified with curl.
+BROWSER_USER_AGENT = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+)
 
 # Function to fully log messages only to file
 def log_to_file_only(message, level=logging.INFO):
@@ -103,6 +113,27 @@ def _ensure_ictv_alias(dest):
         logger.info(f"Copying {old_msh} to {new_msh}.")
         shutil.copy2(old_msh, new_msh)
 
+# taxmyphage's own VMR downloader (taxmyphage/download_check.py) uses the `wget`
+# pip package with no custom headers, so ICTV's server always 403s it, install
+# never gets further. Pre-fetch VMR.xlsx ourselves with a browser User-Agent so
+# taxmyphage's check_VMR() finds it already present and skips its own downloader.
+def _prefetch_vmr(dest):
+    vmr_path = os.path.join(dest, "VMR.xlsx")
+    if os.path.exists(vmr_path):
+        return True
+
+    logger.info(f"Pre-downloading ICTV VMR.xlsx into {dest} (taxmyphage's own downloader is blocked by ICTV's server)...")
+    request = urllib.request.Request(VMR_URL, headers={"User-Agent": BROWSER_USER_AGENT})
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response, open(vmr_path, "wb") as out_file:
+            shutil.copyfileobj(response, out_file)
+        return True
+    except OSError as e:
+        logger.error(f"Failed to pre-download VMR.xlsx from {VMR_URL}: {e}")
+        if os.path.exists(vmr_path):
+            os.remove(vmr_path)
+        return False
+
 def download_taxmyphage(dest, env_name="QPPL_env2"):
     if _already_present(dest, ["ICTV_2024.msh", "ICTV.msh"]):
         logger.info(f"taxmyPHAGE database already present at {dest}, skipping.")
@@ -114,11 +145,21 @@ def download_taxmyphage(dest, env_name="QPPL_env2"):
         return
 
     os.makedirs(dest, exist_ok=True)
+    if not _prefetch_vmr(dest):
+        return
+
     logger.info(f"Downloading taxmyPHAGE database into {dest}...")
     if not run_live(["conda", "run", "-n", env_name, "taxmyphage", "install", "--db_folder", dest], "taxmyphage install"):
         return
 
     _ensure_ictv_alias(dest)
+
+    # taxmyphage calls bare `sys.exit()` on internal failures (e.g. a blocked
+    # download), which exits 0 and makes run_live report success even though
+    # nothing was installed. Verify the actual artifact exists before trusting that.
+    if not glob.glob(os.path.join(dest, "ICTV_2024.msh")) and not glob.glob(os.path.join(dest, "ICTV.msh")):
+        logger.error(f"taxmyphage install exited successfully but produced no mash index in {dest}; not marking as done.")
+        return
 
     _mark_done(dest)
     logger.info(f"taxmyPHAGE database ready at {dest}.")

@@ -161,6 +161,18 @@ def fix_qppl_env2():
     except (OSError, ValueError) as e:
         logger.error(f"{env_name}: failed to clear execstack bit on {torch_lib_path}: {e}")
 
+    # taxmyphage<=0.3.6 hardcodes its database URLs to a specific ICTV MSL
+    # version (e.g. .../ICTV_MSL40v1.msh) instead of the stable .../current/
+    # pointer, so once ICTV/millardlab rotates in a new release the old
+    # objects are deleted and every download 403s. 0.3.7 switched to the
+    # current/ pointer, fixing this permanently.
+    taxmyphage_version = _pip_version(env_name, "taxmyphage")
+    if not taxmyphage_version or _version_tuple(taxmyphage_version) < (0, 3, 7):
+        logger.info(f"{env_name}: taxmyphage {taxmyphage_version or 'unknown'} predates 0.3.7, upgrading.")
+        run_live(["conda", "run", "-n", env_name, "pip", "install", "--upgrade", "taxmyphage>=0.3.7"], f"{env_name}: upgrading taxmyphage")
+    else:
+        logger.info(f"{env_name}: taxmyphage {taxmyphage_version} already OK.")
+
 # phabox2 needs numpy<2 (yml pins 2.1.3) and pytorch 2.4.1 hits the same execstack
 # crash as above; here it's fixed by downgrading torch instead, since phabox2
 # doesn't hard-pin a torch version the way medaka does.
