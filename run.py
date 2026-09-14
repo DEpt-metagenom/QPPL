@@ -18,8 +18,8 @@ QPPL_DIR = os.path.dirname(os.path.abspath(__file__))
 SRUN_CMD = [
     "srun",
     "--nodes=1",
-    "--cpus-per-task=4",  # TEMP: lowered from 10 to fit local laptop test (4 CPUs avail)
-    "--mem=24G",  # TEMP: lowered from 120G to fit local laptop test (~30G avail)
+    "--cpus-per-task=10",
+    "--mem=120G",
     "python3", "QPPL.py", "--config", "qppl.conf",
 ]
 
